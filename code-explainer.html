@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Code Explainer + Debug Helper</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --bg2: #141720;
+    --bg3: #1b1f2e;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.14);
+    --text: #e8eaf2;
+    --muted: #6b7280;
+    --accent: #4ade80;
+    --accent2: #22d3ee;
+    --warn: #fb923c;
+    --err: #f87171;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: relative;
+    z-index: 10;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+  .logo-text span { color: var(--accent); }
+  .badge {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    padding: 4px 10px; border-radius: 20px;
+    background: rgba(74,222,128,0.1); color: var(--accent);
+    border: 1px solid rgba(74,222,128,0.2);
+  }
+
+  /* ── Layout ── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: calc(100vh - 65px);
+    overflow: hidden;
+  }
+
+  /* ── Left Panel ── */
+  .left-panel {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .panel-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+  .lang-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lang-btn {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    padding: 4px 10px; border-radius: 5px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .lang-btn:hover { border-color: var(--border2); color: var(--text); }
+  .lang-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(34,211,238,0.08); }
+
+  #code-input {
+    flex: 1;
+    width: 100%; padding: 20px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.7;
+    background: var(--bg); color: var(--text);
+    border: none; outline: none; resize: none;
+    tab-size: 2;
+  }
+  #code-input::placeholder { color: var(--muted); }
+  #code-input:focus { background: var(--bg2); }
+
+  .action-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .char-count { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: auto; }
+
+  /* ── Mode Pills ── */
+  .modes { display: flex; gap: 6px; }
+  .mode-btn {
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .mode-btn:hover { border-color: var(--border2); color: var(--text); }
+  .mode-btn.active[data-mode="explain"] { border-color: var(--accent2); color: var(--accent2); background: rgba(34,211,238,0.08); }
+  .mode-btn.active[data-mode="debug"]   { border-color: var(--err); color: var(--err); background: rgba(248,113,113,0.08); }
+  .mode-btn.active[data-mode="improve"] { border-color: var(--accent); color: var(--accent); background: rgba(74,222,128,0.08); }
+  .mode-btn.active[data-mode="complexity"] { border-color: var(--warn); color: var(--warn); background: rgba(251,146,60,0.08); }
+
+  /* ── Run Button ── */
+  .run-btn {
+    font-family: var(--sans); font-size: 13px; font-weight: 700;
+    padding: 8px 22px; border-radius: 7px;
+    border: none; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #0d0f14;
+    transition: opacity 0.15s, transform 0.1s;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  .run-btn:hover { opacity: 0.9; }
+  .run-btn:active { transform: scale(0.97); }
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── Right Panel ── */
+  .right-panel {
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .output-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .mode-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent2); }
+
+  .copy-btn {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    padding: 4px 10px; border-radius: 5px;
+    border: 1px solid var(--border); background: transparent; color: var(--muted);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .copy-btn:hover { border-color: var(--border2); color: var(--text); }
+
+  #output {
+    flex: 1; padding: 24px; overflow-y: auto;
+    font-family: var(--sans); font-size: 14px; line-height: 1.75;
+  }
+
+  /* Scrollbar */
+  #code-input::-webkit-scrollbar, #output::-webkit-scrollbar { width: 6px; }
+  #code-input::-webkit-scrollbar-track, #output::-webkit-scrollbar-track { background: transparent; }
+  #code-input::-webkit-scrollbar-thumb, #output::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── Output States ── */
+  .empty-state {
+    height: 100%; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 12px; color: var(--muted); text-align: center;
+  }
+  .empty-icon { font-size: 40px; opacity: 0.3; }
+  .empty-state p { font-size: 13px; max-width: 220px; line-height: 1.6; }
+
+  .loading-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; gap: 16px;
+  }
+  .spinner {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-state p { font-size: 13px; color: var(--muted); font-family: var(--mono); }
+
+  /* Output content */
+  .output-content h3 {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); margin: 24px 0 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .output-content h3:first-child { margin-top: 0; }
+  .output-content p { margin-bottom: 12px; color: var(--text); }
+  .output-content ul, .output-content ol { padding-left: 20px; margin-bottom: 12px; }
+  .output-content li { margin-bottom: 6px; color: var(--text); }
+  .output-content strong { color: #fff; font-weight: 600; }
+  .output-content em { color: var(--accent2); font-style: italic; }
+  .output-content code {
+    font-family: var(--mono); font-size: 12px;
+    background: var(--bg3); color: var(--accent2);
+    padding: 2px 6px; border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .output-content pre {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px; margin: 12px 0;
+    overflow-x: auto; position: relative;
+  }
+  .output-content pre code {
+    background: none; border: none; padding: 0;
+    font-size: 12.5px; color: var(--text); display: block;
+  }
+  .bug-tag, .warn-tag, .ok-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    padding: 3px 10px; border-radius: 4px; margin-right: 8px; vertical-align: middle;
+  }
+  .bug-tag { background: rgba(248,113,113,0.15); color: var(--err); border: 1px solid rgba(248,113,113,0.3); }
+  .warn-tag { background: rgba(251,146,60,0.15); color: var(--warn); border: 1px solid rgba(251,146,60,0.3); }
+  .ok-tag { background: rgba(74,222,128,0.1); color: var(--accent); border: 1px solid rgba(74,222,128,0.25); }
+
+  .error-box {
+    background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3);
+    border-radius: 8px; padding: 16px; color: var(--err);
+    font-family: var(--mono); font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-text">Code<span>AI</span></div>
+  </div>
+  <div class="badge">Powered by Claude</div>
+</header>
+
+<main>
+  <!-- Left: Input -->
+  <div class="left-panel">
+    <div class="panel-header">
+      <span class="panel-title">Input</span>
+      <button class="lang-btn" style="font-size:11px" onclick="clearAll()">✕ Clear</button>
+    </div>
+
+    <div class="lang-row" id="lang-row">
+      <button class="lang-btn active" data-lang="auto" onclick="setLang(this)">Auto</button>
+      <button class="lang-btn" data-lang="JavaScript" onclick="setLang(this)">JS</button>
+      <button class="lang-btn" data-lang="TypeScript" onclick="setLang(this)">TS</button>
+      <button class="lang-btn" data-lang="Python" onclick="setLang(this)">Python</button>
+      <button class="lang-btn" data-lang="Java" onclick="setLang(this)">Java</button>
+      <button class="lang-btn" data-lang="C++" onclick="setLang(this)">C++</button>
+      <button class="lang-btn" data-lang="Go" onclick="setLang(this)">Go</button>
+      <button class="lang-btn" data-lang="Rust" onclick="setLang(this)">Rust</button>
+      <button class="lang-btn" data-lang="SQL" onclick="setLang(this)">SQL</button>
+      <button class="lang-btn" data-lang="Shell" onclick="setLang(this)">Bash</button>
+    </div>
+
+    <textarea id="code-input"
+      placeholder="// Paste your code here...&#10;//&#10;// Try pasting a function, a class, an error stack trace,&#10;// or any snippet you want analyzed."
+      oninput="updateCount()"
+      spellcheck="false"
+    ></textarea>
+
+    <div class="action-bar">
+      <div class="modes">
+        <button class="mode-btn active" data-mode="explain" onclick="setMode(this)">Explain</button>
+        <button class="mode-btn" data-mode="debug" onclick="setMode(this)">Debug</button>
+        <button class="mode-btn" data-mode="improve" onclick="setMode(this)">Improve</button>
+        <button class="mode-btn" data-mode="complexity" onclick="setMode(this)">Complexity</button>
+      </div>
+      <span class="char-count" id="char-count">0 chars</span>
+      <button class="run-btn" id="run-btn" onclick="runAnalysis()">
+        <span>▶</span> Analyze
+      </button>
+    </div>
+  </div>
+
+  <!-- Right: Output -->
+  <div class="right-panel">
+    <div class="output-header">
+      <div class="mode-label">
+        <div class="mode-dot" id="mode-dot"></div>
+        <span id="mode-label-text">Ready</span>
+      </div>
+      <button class="copy-btn" onclick="copyOutput()">Copy</button>
+    </div>
+    <div id="output">
+      <div class="empty-state">
+        <div class="empty-icon">⚙</div>
+        <p>Paste code on the left and choose an analysis mode to get started.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+let currentMode = 'explain';
+let currentLang = 'auto';
+
+const modeColors = {
+  explain: 'var(--accent2)',
+  debug: 'var(--err)',
+  improve: 'var(--accent)',
+  complexity: 'var(--warn)'
+};
+const modeLabels = {
+  explain: 'Explanation',
+  debug: 'Debug Report',
+  improve: 'Improvements',
+  complexity: 'Complexity Analysis'
+};
+
+function setMode(el) {
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentMode = el.dataset.mode;
+}
+
+function setLang(el) {
+  document.querySelectorAll('.lang-btn[data-lang]').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  currentLang = el.dataset.lang;
+}
+
+function updateCount() {
+  const len = document.getElementById('code-input').value.length;
+  document.getElementById('char-count').textContent = len.toLocaleString() + ' chars';
+}
+
+function clearAll() {
+  document.getElementById('code-input').value = '';
+  updateCount();
+  document.getElementById('output').innerHTML = `<div class="empty-state"><div class="empty-icon">⚙</div><p>Paste code on the left and choose an analysis mode to get started.</p></div>`;
+  document.getElementById('mode-label-text').textContent = 'Ready';
+  document.getElementById('mode-dot').style.background = 'var(--accent2)';
+}
+
+function copyOutput() {
+  const el = document.getElementById('output');
+  navigator.clipboard.writeText(el.innerText).catch(() => {});
+  const btn = document.querySelector('.copy-btn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderMarkdown(text) {
+  // Tag replacements for bug/warning/ok markers
+  text = text.replace(/\b(BUG|ERROR)\b/g, '<span class="bug-tag">⚠ $1</span>');
+  text = text.replace(/\bWARNING\b/g, '<span class="warn-tag">! WARNING</span>');
+  text = text.replace(/\bNO BUGS FOUND\b/gi, '<span class="ok-tag">✓ No Bugs Found</span>');
+
+  // Code blocks
+  text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) =>
+    `<pre><code>${escHtml(code.trim())}</code></pre>`);
+
+  // Inline code
+  text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Headings
+  text = text.replace(/^#{1,3} (.+)$/gm, '<h3>$1</h3>');
+
+  // Bold/italic
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Lists
+  text = text.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>.*<\/li>\n?)+/g, m => `<ul>${m}</ul>`);
+
+  // Paragraphs
+  text = text.replace(/\n{2,}/g, '</p><p>');
+  text = `<p>${text}</p>`;
+  text = text.replace(/<p>(<h3>|<ul>|<pre>)/g, '$1');
+  text = text.replace(/(<\/h3>|<\/ul>|<\/pre>)<\/p>/g, '$1');
+  text = text.replace(/<p>\s*<\/p>/g, '');
+
+  return text;
+}
+
+function getPrompt(mode, lang, code) {
+  const langStr = lang === 'auto' ? '' : ` (${lang})`;
+  const base = `You are an elite code reviewer. Analyze this${langStr} code:\n\n\`\`\`\n${code}\n\`\`\`\n\n`;
+  const prompts = {
+    explain: base + `Explain this code clearly. Cover: (1) What it does overall, (2) How each major part works, (3) Key patterns or techniques used, (4) Any edge cases or assumptions. Use ### headings. Be thorough but concise.`,
+    debug: base + `Find ALL bugs, errors, and potential issues. For each: label it as BUG or WARNING, describe the problem precisely, explain the impact, and provide the fixed code. Use code blocks for fixes. If clean, write NO BUGS FOUND and explain why it's solid.`,
+    improve: base + `Suggest the top improvements for this code. Cover: performance, readability, best practices, error handling, naming, and structure. Show before/after code examples. Rank by impact. Be specific and actionable.`,
+    complexity: base + `Analyze time and space complexity using Big-O notation. Cover each function/block. Identify bottlenecks. Show optimized alternatives with their complexity. Include concrete examples of when the complexity matters.`
+  };
+  return prompts[mode];
+}
+
+async function runAnalysis() {
+  const code = document.getElementById('code-input').value.trim();
+  if (!code) {
+    document.getElementById('output').innerHTML = `<div class="error-box">Please paste some code first.</div>`;
+    return;
+  }
+
+  const btn = document.getElementById('run-btn');
+  const out = document.getElementById('output');
+  const dot = document.getElementById('mode-dot');
+  const label = document.getElementById('mode-label-text');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;"></span> Analyzing...';
+
+  dot.style.background = modeColors[currentMode];
+  label.textContent = modeLabels[currentMode];
+
+  out.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Analyzing your code…</p></div>`;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: getPrompt(currentMode, currentLang, code) }]
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || 'API error ' + resp.status);
+    const text = data.content.map(b => b.text || '').join('');
+    out.innerHTML = `<div class="output-content">${renderMarkdown(text)}</div>`;
+  } catch (err) {
+    out.innerHTML = `<div class="error-box">Error: ${err.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<span>▶</span> Analyze';
+}
+
+// Keyboard shortcut: Cmd/Ctrl + Enter
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') runAnalysis();
+});
+</script>
+</body>
+</html>
